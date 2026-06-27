@@ -1,0 +1,397 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Barlow:ital,wght@0,100;0,200;0,300;0,400;0,500;0,600;0,700;0,800;0,900;1,100;1,200;1,300;1,400;1,500;1,600;1,700;1,800;1,900&display=block" rel="stylesheet">
+<style>
+body { margin:0; overflow:hidden; background:#fff; }
+</style>
+</head>
+<body>
+<script>
+// ── Wait for Barlow font to load ──────────────────────────────────────────
+const FONT_READY = document.fonts.ready;
+
+// ── Constants ──────────────────────────────────────────────────────────────
+const MAX_SIZE = 4096;
+
+// ── Sandbox ─────────────────────────────────────────────────────────────────
+function sandbox(image, options) {
+  const { backgroundColor, padding, targetRatio, notCroppedMode } = options;
+  const { top, bottom, left, right } = padding;
+  const canvas = document.createElement('canvas');
+
+  if (targetRatio === 'free') {
+    let imageWidth, imageHeight;
+    if (image.width > image.height) {
+      imageWidth = MAX_SIZE - left - right;
+      imageHeight = (image.height / image.width) * imageWidth;
+    } else {
+      imageHeight = MAX_SIZE - top - bottom;
+      imageWidth = (image.width / image.height) * imageHeight;
+    }
+    canvas.width = imageWidth + left + right;
+    canvas.height = imageHeight + top + bottom;
+    const ctx = canvas.getContext('2d');
+    ctx.fillStyle = backgroundColor;
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    ctx.drawImage(image, left, top, imageWidth, imageHeight);
+  } else {
+    const ratio = targetRatio.split(':').map(Number);
+    if (ratio[0] > ratio[1]) { canvas.width = MAX_SIZE; canvas.height = (ratio[1] / ratio[0]) * MAX_SIZE; }
+    else { canvas.width = (ratio[0] / ratio[1]) * MAX_SIZE; canvas.height = MAX_SIZE; }
+
+    const ctx = canvas.getContext('2d');
+    ctx.fillStyle = backgroundColor;
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+    if (!notCroppedMode) {
+      if (image.width / image.height > ratio[0] / ratio[1]) {
+        const h = canvas.height - top - bottom;
+        const w = (image.width / image.height) * h;
+        ctx.drawImage(image, 0, 0, image.width, image.height, left - (w - (canvas.width - left - right)) / 2, top, w, h);
+        ctx.fillRect(0, 0, left, canvas.height);
+        ctx.fillRect(canvas.width - right, 0, right, canvas.height);
+      } else {
+        const w = canvas.width - left - right;
+        const h = (image.height / image.width) * w;
+        ctx.drawImage(image, 0, 0, image.width, image.height, left, top - (h - (canvas.height - top - bottom)) / 2, w, h);
+        ctx.fillRect(0, 0, canvas.width, top);
+        ctx.fillRect(0, canvas.height - bottom, canvas.width, bottom);
+      }
+    } else {
+      let imageWidth = canvas.width - left - right;
+      let imageHeight = canvas.height - top - bottom;
+      if (image.width / image.height > ratio[0] / ratio[1]) {
+        imageHeight = (image.height / image.width) * imageWidth;
+      } else {
+        imageWidth = (image.width / image.height) * imageHeight;
+      }
+      ctx.drawImage(image, 0, 0, image.width, image.height,
+        left + (canvas.width - left - right - imageWidth) / 2,
+        top + (canvas.height - top - bottom - imageHeight) / 2,
+        imageWidth, imageHeight);
+    }
+  }
+  return canvas;
+}
+
+// ── Template processing ────────────────────────────────────────────────────
+function processTemplate(template, exif, opts) {
+  const disableExposure = opts && opts.disableExposure;
+  const separator = (opts && opts.separator) || ' ';
+  return template.split('}')
+    .map(function(p) { return p + '}'; })
+    .map(function(p) {
+      return p
+        .replace(/{MAKER}/g, exif.make || '')
+        .replace(/{BODY}/g, exif.model || '')
+        .replace(/{LENS}/g, exif.lensModel || '')
+        .replace(/{ISO}/g, disableExposure ? '' : (exif.iso || ''))
+        .replace(/{MM}/g, disableExposure ? '' : (exif.focalLength || ''))
+        .replace(/{F}/g, disableExposure ? '' : (exif.fNumber || ''))
+        .replace(/{SEC}/g, disableExposure ? '' : (exif.exposureTime || ''))
+        .replace(/{TAKEN_AT}/g, exif.takenAt || '')
+        .replace(/}/g, '');
+    })
+    .filter(Boolean)
+    .join(separator);
+}
+
+// ── Theme: one_line ────────────────────────────────────────────────────────
+function themeOneLine(image, exif, opts) {
+  opts = opts || {};
+  var bg = opts.backgroundColor || '#ffffff';
+  var tc = opts.textColor || '#000000';
+  var ff = opts.fontFamily || 'Barlow';
+  var fs = opts.fontStyle || 'normal';
+  var fw = opts.fontWeight || 300;
+  var fz = opts.fontSize || 70;
+  var label = opts.label || '';
+  var divider = opts.divider || '\u2219';
+  var tpl = opts.template || '{MAKER}{BODY}{LENS}{ISO}{MM}{F}{SEC}';
+  var align = opts.textAlign || 'center';
+  var showExp = opts.showExposure !== false;
+  var pt = opts.paddingTop || 100;
+  var pb = opts.paddingBottom || 250;
+  var pl = opts.paddingLeft || 100;
+  var pr = opts.paddingRight || 100;
+  var inside = opts.paddingInside || false;
+
+  var pad = inside ? { top:0, right:0, bottom:0, left:0 } : { top:pt, right:pr, bottom:pb, left:pl };
+  var canvas = sandbox(image, { backgroundColor: bg, padding: pad, targetRatio: opts.ratio || 'free', notCroppedMode: opts.notCropped || false });
+  var ctx = canvas.getContext('2d');
+
+  ctx.fillStyle = tc;
+  ctx.textBaseline = 'middle';
+  ctx.font = fs + ' ' + fw + ' ' + fz + 'px ' + ff;
+  ctx.textAlign = 'center';
+  if (label) ctx.fillText(label, canvas.width / 2, pad.top / 2);
+
+  ctx.textAlign = align;
+  var text = processTemplate(tpl, exif, { disableExposure: !showExp, separator: ' ' + divider + ' ' });
+  var x = align === 'left' ? pad.left : align === 'right' ? canvas.width - pad.right : canvas.width / 2;
+  ctx.fillText(text, x, canvas.height - pad.bottom / 2);
+  return canvas;
+}
+
+// ── Theme: two_line ────────────────────────────────────────────────────────
+function themeTwoLine(image, exif, opts) {
+  opts = opts || {};
+  var bg = opts.backgroundColor || '#ffffff';
+  var tc = opts.textColor || '#000000';
+  var ff = opts.fontFamily || 'Barlow';
+  var fs = opts.fontStyle || 'normal';
+  var fw = opts.fontWeight || 300;
+  var fz = opts.fontSize || 70;
+  var label = opts.label || '';
+  var divider = opts.divider || '\u2219';
+  var tpl1 = opts.template1 || '{MAKER}{BODY}{LENS}';
+  var tpl2 = opts.template2 || '{ISO}{MM}{F}{SEC}';
+  var align = opts.textAlign || 'center';
+  var showExp = opts.showExposure !== false;
+  var pt = opts.paddingTop || 100;
+  var pb = opts.paddingBottom || 350;
+  var pl = opts.paddingLeft || 100;
+  var pr = opts.paddingRight || 100;
+  var inside = opts.paddingInside || false;
+
+  var pad = inside ? { top:0, right:0, bottom:0, left:0 } : { top:pt, right:pr, bottom:pb, left:pl };
+  var canvas = sandbox(image, { backgroundColor: bg, padding: pad, targetRatio: opts.ratio || 'free', notCroppedMode: opts.notCropped || false });
+  var ctx = canvas.getContext('2d');
+
+  ctx.fillStyle = tc;
+  ctx.textBaseline = 'middle';
+  ctx.font = fs + ' ' + fw + ' ' + fz + 'px ' + ff;
+  ctx.textAlign = 'center';
+  if (label) ctx.fillText(label, canvas.width / 2, pad.top / 2);
+
+  ctx.textAlign = align;
+  var ls = fz / 1.5;
+  var sep = ' ' + divider + ' ';
+
+  var t1 = processTemplate(tpl1, exif, { disableExposure: !showExp, separator: sep });
+  var x = align === 'left' ? pad.left : align === 'right' ? canvas.width - pad.right : canvas.width / 2;
+  ctx.fillText(t1, x, canvas.height - pad.bottom / 2 - ls);
+
+  if (showExp) {
+    var t2 = processTemplate(tpl2, exif, { separator: sep });
+    ctx.fillText(t2, x, canvas.height - pad.bottom / 2 + ls);
+  }
+  return canvas;
+}
+
+// ── Theme: simple ──────────────────────────────────────────────────────────
+function themeSimple(image, exif, opts) {
+  opts = opts || {};
+  var label = opts.label || '@username';
+  var ff = opts.fontFamily || 'Barlow';
+  var showExp = opts.showExposure !== false;
+  var pt = opts.paddingTop || 100;
+  var pb = opts.paddingBottom || 400;
+  var pl = opts.paddingLeft || 100;
+  var pr = opts.paddingRight || 100;
+  var inside = opts.paddingInside || false;
+
+  var pad = inside ? { top:0, right:0, bottom:0, left:0 } : { top:pt, right:pr, bottom:pb, left:pl };
+  var canvas = sandbox(image, { backgroundColor: '#ffffff', padding: pad, targetRatio: opts.ratio || 'free', notCroppedMode: opts.notCropped || false });
+  var ctx = canvas.getContext('2d');
+
+  ctx.fillStyle = '#a0a0a0';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+
+  ctx.font = '300 40px ' + ff;
+  ctx.fillText(label, canvas.width / 2, canvas.height - 60);
+
+  ctx.textAlign = 'left';
+  ctx.fillStyle = '#000000';
+  ctx.font = '700 100px ' + ff;
+  var makerW = ctx.measureText(exif.make + ' ').width;
+  ctx.font = '300 100px ' + ff;
+  var modelW = ctx.measureText(exif.model).width;
+  var totalW = makerW + modelW;
+
+  ctx.font = '700 100px ' + ff;
+  ctx.fillText(exif.make, canvas.width / 2 - totalW / 2, canvas.height - pad.bottom / 2 - 100);
+  ctx.font = '300 100px ' + ff;
+  ctx.fillText(exif.model, canvas.width / 2 - totalW / 2 + makerW, canvas.height - pad.bottom / 2 - 100);
+
+  ctx.textAlign = 'center';
+  ctx.fillStyle = '#a0a0a0';
+  ctx.font = '300 30px ' + ff;
+  if (exif.takenAt) ctx.fillText(exif.takenAt, canvas.width / 2, canvas.height - pad.bottom / 2 + 80);
+
+  if (showExp) {
+    var items = [exif.iso, exif.focalLength, exif.fNumber, exif.exposureTime].filter(Boolean);
+    if (items.length) {
+      ctx.font = '300 50px ' + ff;
+      ctx.fillText(items.join(' \u2219 '), canvas.width / 2, canvas.height - pad.bottom / 2);
+    }
+  }
+  return canvas;
+}
+
+// ── Theme: shot_on ─────────────────────────────────────────────────────────
+function themeShotOn(image, exif, opts) {
+  opts = opts || {};
+  var bg = opts.backgroundColor || '#ffffff';
+  var tc = opts.textColor || '#000000';
+  var showExp = opts.showExposure !== false;
+  var pt = opts.paddingTop || 0;
+  var pb = (opts.paddingBottom || 0) + 200;
+  var pl = opts.paddingLeft || 0;
+  var pr = opts.paddingRight || 0;
+  var fz = 70;
+
+  var pad = { top: pt, right: pr, bottom: pb, left: pl };
+  var canvas = sandbox(image, { backgroundColor: bg, padding: pad, targetRatio: opts.ratio || 'free', notCroppedMode: opts.notCropped || false });
+  var ctx = canvas.getContext('2d');
+
+  ctx.fillStyle = tc;
+  ctx.textBaseline = 'middle';
+  ctx.font = 'normal 100 ' + fz + 'px Barlow';
+  ctx.textAlign = 'right';
+
+  if (showExp) {
+    var expItems = [exif.iso, exif.focalLength, exif.fNumber, exif.exposureTime].filter(Boolean);
+    if (expItems.length) ctx.fillText(expItems.join('  '), canvas.width - fz, canvas.height - pad.bottom / 2);
+  }
+
+  ctx.textAlign = 'left';
+  ctx.font = 'normal 100 ' + fz + 'px Barlow';
+  ctx.fillText('Shot on  ', fz, canvas.height - pad.bottom / 2);
+  var shotOnW = ctx.measureText('Shot on  ').width;
+
+  ctx.font = 'normal 500 ' + fz + 'px Barlow';
+  var makerModel = [exif.make, exif.model, exif.lensModel].filter(Boolean).join(' ');
+  ctx.fillText(makerModel, shotOnW + fz, canvas.height - pad.bottom / 2);
+  return canvas;
+}
+
+// ── Theme: strap ───────────────────────────────────────────────────────────
+function themeStrap(image, exif, opts) {
+  opts = opts || {};
+  var dark = opts.darkMode || false;
+  var artist = opts.artist || '';
+  var showExp = opts.showExposure !== false;
+  var sw = opts.secondaryFontWeight || 300;
+  var tpl1 = opts.template1 || '{ISO}{MM}{F}{SEC}';
+  var tpl2 = opts.template2 || '{MAKER}{BODY}';
+  var tpl3 = opts.template3 || '{TAKEN_AT}';
+  var tpl4 = opts.template4 || '{LENS}';
+  var pt = opts.paddingTop || 0;
+  var pb = (opts.paddingBottom || 0) + 300;
+  var pl = opts.paddingLeft || 0;
+  var pr = opts.paddingRight || 0;
+  var fz = 70;
+  var bg = dark ? '#000000' : '#ffffff';
+  var pc = dark ? '#ffffff' : '#000000';
+  var sc = dark ? '#888888' : '#333333';
+
+  var pad = { top: pt, right: pr, bottom: pb, left: pl };
+  var canvas = sandbox(image, { backgroundColor: bg, padding: pad, targetRatio: opts.ratio || 'free', notCroppedMode: opts.notCropped || false });
+  var ctx = canvas.getContext('2d');
+  ctx.textBaseline = 'middle';
+
+  var t1 = processTemplate(tpl1, exif, { disableExposure: !showExp });
+  var t2 = processTemplate(tpl2, exif);
+  var t3 = processTemplate(tpl3, exif);
+  var t4 = processTemplate(tpl4, exif);
+
+  // LEFT SIDE
+  ctx.textAlign = 'left';
+  if (showExp && t1) {
+    ctx.font = 'normal 500 ' + fz + 'px Barlow';
+    ctx.fillStyle = pc;
+    ctx.fillText(t1, fz, canvas.height - pad.bottom / 2 - fz / 2);
+  }
+  ctx.font = 'normal ' + sw + ' ' + fz + 'px Barlow';
+  ctx.fillStyle = sc;
+  if (artist) ctx.fillText('Shot by \u00a9 ' + artist, fz, canvas.height - pad.bottom / 2 + fz / 2);
+  else ctx.fillText(t3, fz, canvas.height - pad.bottom / 2 + fz / 2);
+
+  // RIGHT SIDE
+  ctx.textAlign = 'right';
+  ctx.fillStyle = pc;
+  ctx.font = 'normal 500 ' + fz + 'px Barlow';
+  var topW = ctx.measureText(t2).width;
+  ctx.fillText(t2, canvas.width - fz, canvas.height - pad.bottom / 2 - fz / 2);
+
+  ctx.fillStyle = sc;
+  ctx.font = 'normal ' + sw + ' ' + fz + 'px Barlow';
+  var bottomW = ctx.measureText(t4).width;
+  ctx.fillText(t4, canvas.width - fz, canvas.height - pad.bottom / 2 + fz / 2);
+
+  // Divider line
+  var maxW = Math.max(topW, bottomW);
+  var lineX = canvas.width - maxW - fz * 2;
+  ctx.beginPath();
+  ctx.moveTo(lineX, canvas.height - pad.bottom / 2 - fz);
+  ctx.lineTo(lineX, canvas.height - pad.bottom / 2 + fz);
+  ctx.strokeStyle = sc;
+  ctx.lineWidth = 2;
+  ctx.stroke();
+
+  return canvas;
+}
+
+// ── Theme: just_frame ──────────────────────────────────────────────────────
+function themeJustFrame(image, opts) {
+  opts = opts || {};
+  var ps = opts.padding || 100;
+  var pad = { top: ps, right: ps, bottom: ps, left: ps };
+  return sandbox(image, { backgroundColor: opts.backgroundColor || '#ffffff', padding: pad, targetRatio: opts.ratio || 'free', notCroppedMode: opts.notCropped || false });
+}
+
+// ── Theme: no_frame ────────────────────────────────────────────────────────
+function themeNoFrame(image, opts) {
+  opts = opts || {};
+  return sandbox(image, { backgroundColor: '#ffffff', padding: { top:0, right:0, bottom:0, left:0 }, targetRatio: opts.ratio || 'free', notCroppedMode: opts.notCropped || false });
+}
+
+// ── Theme registry ─────────────────────────────────────────────────────────
+var THEMES = {
+  no_frame: themeNoFrame,
+  just_frame: themeJustFrame,
+  one_line: themeOneLine,
+  two_line: themeTwoLine,
+  simple: themeSimple,
+  shot_on: themeShotOn,
+  strap: themeStrap,
+};
+
+// ── Main render function ───────────────────────────────────────────────────
+async function render(params) {
+  await FONT_READY;
+
+  var img = new Image();
+  await new Promise(function(resolve, reject) {
+    img.onload = resolve;
+    img.onerror = reject;
+    img.src = params.imageBase64;
+  });
+
+  var themeFn = THEMES[params.theme] || themeOneLine;
+
+  var canvas;
+  if (params.theme === 'just_frame' || params.theme === 'no_frame') {
+    canvas = themeFn(img, params);
+  } else {
+    canvas = themeFn(img, params.exif, params);
+  }
+
+  var mime = 'image/jpeg';
+  if (params.format === 'png') mime = 'image/png';
+  else if (params.format === 'webp') mime = 'image/webp';
+
+  return canvas.toDataURL(mime, params.quality / 100);
+}
+
+// ── Set as global for Puppeteer ────────────────────────────────────────────
+window.__RENDER = render;
+</script>
+</body>
+</html>
